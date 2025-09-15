@@ -1,4 +1,3 @@
-
 import React, { useEffect, useRef, useState } from 'react'
 import { askGenie } from '../services/api'
 
@@ -7,8 +6,8 @@ type Props = { open: boolean; onClose: () => void }
 export function ChatDrawer({ open, onClose }: Props) {
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
-  const [messages, setMessages] = useState<{ role: 'system'|'user'|'assistant'; text: string }[]>([
-    { role: 'system', text: '👋 Hey there! I’m PAR Genie. Ask me anything about your Admin Portal data.' }
+  const [messages, setMessages] = useState<{ role: 'system'|'user'|'assistant'; text: string; matches?: any[] }[]>([
+    { role: 'system', text: '👋 Hey there! I\'m PAR Genie. Ask me anything about your Admin Portal data.' }
   ])
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -41,19 +40,13 @@ export function ChatDrawer({ open, onClose }: Props) {
       if (!response.ok) throw new Error('Network response was not ok')
       const data = await response.json()
       // Assuming the API returns { reply: string }
-        let replyText = ''
         if (Array.isArray(data.matches) && data.matches.length > 0) {
-          replyText = data.matches.map(m => {
-            const percent = Math.round(m.score * 100)
-            return `• ${m.name} (${m.category})\n${m.description}\nMatch: ${percent}%`
-          }).join('\n\n')
+          setMessages(m => [...m, { role: 'assistant', text: '', matches: data.matches }])
         } else if (data.reply) {
-          replyText = data.reply
+          setMessages(m => [...m, { role: 'assistant', text: data.reply }])
         } else {
-          replyText = 'No matches found.'
+          setMessages(m => [...m, { role: 'assistant', text: 'No matches found.' }])
         }
-
-        setMessages(m => [...m, { role: 'assistant', text: replyText }])
     } catch (err: any) {
       setMessages(m => [...m, { role: 'assistant', text: 'Sorry, I could not reach the service.' }])
     } finally {
@@ -74,7 +67,21 @@ export function ChatDrawer({ open, onClose }: Props) {
         <div className="drawer-body">
           {messages.map((m, i) => (
             <div key={i} className={`msg ${m.role}`}>
-              <div className="bubble">{m.text}</div>
+              <div className="bubble">
+                {m.role === 'assistant' && Array.isArray(m.matches) && m.matches.length > 0 ? (
+                  <ul className="match-list">
+                    {m.matches.map((match, idx) => (
+                      <li key={idx} className="match-item">
+                        <div className="match-header">{match.name}</div>
+                        <a href="#" className="match-desc">{match.description}</a>
+                        <div className="match-percent">{Math.round(match.score * 100)}% Match</div>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  m.text
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -100,6 +107,36 @@ export function ChatDrawer({ open, onClose }: Props) {
 }
 
 const css = `
+/* Match list styles */
+.match-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.match-item {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding: 12px 0 18px 0;
+  border-bottom: 1px solid #eee;
+}
+.match-header {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+.match-desc {
+  color: #2F3452;
+  text-decoration: underline;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.match-percent {
+  position: absolute;
+  right: 0;
+  top: 12px;
+  font-weight: bold;
+  color: #1bbf4c;
+}
 .drawer {
   position: fixed; top: 59px; right: 0; width: 420px; height: calc(100vh - 56px);
   background: #fff; border-left: 1px solid var(--par-outline);
@@ -108,6 +145,37 @@ const css = `
   display: grid; grid-template-rows: auto 1fr auto; z-index: 50;
 }
 .drawer.open { transform: translateX(0); }
+
+/* Match list styles */
+.match-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.match-item {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  padding: 12px 0 18px 0;
+  border-bottom: 1px solid #eee;
+}
+.match-header {
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+.match-desc {
+  color: #2F3452;
+  text-decoration: underline;
+  margin-bottom: 4px;
+  word-break: break-word;
+}
+.match-percent {
+  position: absolute;
+  right: 0;
+  top: 12px;
+  font-weight: bold;
+  color: #1bbf4c;
+}
 
 .drawer-header {
   display:flex; align-items:center; gap:10px; padding: 12px 12px; border-bottom: 1px solid var(--par-outline);
