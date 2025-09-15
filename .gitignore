@@ -21,3 +21,6 @@ Thumbs.db
 
 # Visual Studio files
 .vs/
+
+# Node.js dependencies
+node_modules/
