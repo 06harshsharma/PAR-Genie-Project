@@ -1,0 +1,174 @@
+[
+  {
+    "reportId": "RPT001",
+    "name": "Sales Summary",
+    "category": "Sales",
+    "description": "Summarizes sales performance for a given period including gross sales, net sales, item sales, taxes, discounts, refunds, and payment details.",
+    "columns": [
+      "Gross Sales",
+      "Net Sales",
+      "Order Count",
+      "Guest Count",
+      "Total Item Sales",
+      "Taxable Item Sales",
+      "Non-Taxable Item Sales",
+      "Tips",
+      "Labor Cost",
+      "Labor Hours",
+      "Gift Card Issue Amount",
+      "Refunds",
+      "Promotions",
+      "Discounts"
+    ],
+    "filters": [
+      {
+        "name": "Location",
+        "type": "string",
+        "values": []
+      },
+      {
+        "name": "Date",
+        "type": "date",
+        "options": ["range", "specific_day", "specific_week", "specific_month"]
+      }
+    ],
+    "examples": [
+      "Show me total sales for last week in Reg1",
+      "Gross sales by location for September 2025"
+    ]
+  },
+  {
+    "reportId": "RPT002",
+    "name": "Taxes by Location",
+    "category": "Finance",
+    "description": "Displays tax breakdowns for each location including percentages for different tax categories such as sales tax, per-item taxes, and flat fees.",
+    "columns": [
+      "Sales Tax",
+      "No Tax",
+      "Per-Ex-N",
+      "Per-Ex-U",
+      "Per-Ex-D",
+      "Per-In-N",
+      "Per-In-U",
+      "Per-In-D",
+      "Flat-Ex-N",
+      "Flat-Ex-U",
+      "Flat-Ex-D",
+      "Flat-In-N",
+      "Flat-In-Uu",
+      "Flat-In-D",
+      "Dest-Ex",
+      "Dest-In",
+      "Trig-Ex",
+      "Trig-In"
+    ],
+    "filters": [
+      {
+        "name": "Location",
+        "type": "string",
+        "values": []
+      }
+    ],
+    "examples": [
+      "Show me tax rates for Reg1",
+      "Tax breakdown for all locations"
+    ]
+  },
+  {
+    "reportId": "RPT003",
+    "name": "Gift Card Sales Summary",
+    "category": "Sales",
+    "description": "Provides a summary of gift card transactions including issued cards, reloads, and cash-outs over a selected time period.",
+    "columns": [
+      "Issue Count",
+      "Issue Amount",
+      "Reload Count",
+      "Reload Amount",
+      "Cash Out Count",
+      "Cash Out Amount"
+    ],
+    "filters": [
+      {
+        "name": "Location",
+        "type": "string",
+        "values": []
+      },
+      {
+        "name": "Date",
+        "type": "date",
+        "options": ["range", "specific_day", "specific_week", "specific_month"]
+      }
+    ],
+    "examples": [
+      "Gift card activity for last month",
+      "Total gift card reloads in Reg1"
+    ]
+  },
+  {
+    "reportId": "RPT004",
+    "name": "Employee Timecard",
+    "category": "HR",
+    "description": "Tracks employee working hours, break times, pay rates, and total pay for a given time period.",
+    "columns": [
+      "Employee Name",
+      "Payroll ID",
+      "Date",
+      "Job",
+      "Time In",
+      "Time Out",
+      "Regular Hours",
+      "Overtime Hours",
+      "Total Hours",
+      "Breaks Unpaid",
+      "Breaks Paid",
+      "Rate",
+      "Total Pay",
+      "Declared Tips"
+    ],
+    "filters": [
+      {
+        "name": "Location",
+        "type": "string",
+        "values": []
+      },
+      {
+        "name": "Date",
+        "type": "date",
+        "options": ["range", "specific_day", "specific_week", "specific_month"]
+      }
+    ],
+    "examples": [
+      "Employee hours for Reg1 last week",
+      "Show total pay for all employees in September"
+    ]
+  },
+  {
+    "reportId": "RPT005",
+    "name": "New Customers by Location",
+    "category": "Customers",
+    "description": "Displays data about new customer signups, potential signups, and total orders for each location over a given time period.",
+    "columns": [
+      "Location",
+      "Total Orders",
+      "Potential Signups",
+      "New Signups",
+      "Signup Rate"
+    ],
+    "filters": [
+      {
+        "name": "Location",
+        "type": "string",
+        "values": []
+      },
+      {
+        "name": "Date",
+        "type": "date",
+        "options": ["range", "specific_day", "specific_week", "specific_month"]
+      }
+    ],
+    "examples": [
+      "New customers for Reg2 last week",
+      "Signup rate by location for September"
+    ]
+  }
+]
