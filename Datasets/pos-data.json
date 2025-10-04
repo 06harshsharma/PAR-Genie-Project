@@ -1,0 +1,111 @@
+{
+  "groups": [
+    {
+      "groupName": "BurgerKing",
+      "locations": [
+        {
+          "locationName": "New York, NY",
+          "items": [
+            {
+              "id": "I001",
+              "name": "Whopper",
+              "price": 5.99,
+              "discount": 0.0
+            },
+            {
+              "id": "I002",
+              "name": "Fries",
+              "price": 2.49,
+              "discount": 0.1
+            },
+            {
+              "id": "I003",
+              "name": "Coke",
+              "price": 1.99,
+              "discount": 0.0
+            }
+          ]
+        },
+        {
+          "locationName": "Los Angeles, CA",
+          "items": [
+            {
+              "id": "I001",
+              "name": "Whopper",
+              "price": 6.49,
+              "discount": 0.0
+            },
+            {
+              "id": "I002",
+              "name": "Fries",
+              "price": 2.59,
+              "discount": 0.0
+            },
+            {
+              "id": "I003",
+              "name": "Coke",
+              "price": 2.09,
+              "discount": 0.05
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "groupName": "Arbys",
+      "locations": [
+        {
+          "locationName": "Chicago, IL",
+          "items": [
+            {
+              "id": "I004",
+              "name": "Roast Beef Sandwich",
+              "price": 4.99,
+              "discount": 0.0
+            },
+            {
+              "id": "I005",
+              "name": "Curly Fries",
+              "price": 2.99,
+              "discount": 0.1
+            },
+            {
+              "id": "I006",
+              "name": "Shake",
+              "price": 3.49,
+              "discount": 0.0
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "groupName": "5Guys",
+      "locations": [
+        {
+          "locationName": "Toronto, Canada",
+          "items": [
+            {
+              "id": "I007",
+              "name": "Cheeseburger",
+              "price": 7.99,
+              "discount": 0.0
+            },
+            {
+              "id": "I008",
+              "name": "Hot Dog",
+              "price": 3.99,
+              "discount": 0.05
+            },
+            {
+              "id": "I002",
+              "name": "Fries",
+              "price": 3.99,
+              "discount": 0.0
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

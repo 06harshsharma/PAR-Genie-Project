@@ -7,22 +7,22 @@ import faiss
 import numpy as np
 import dateparser.search
 from rapidfuzz import fuzz
+import re
+from datetime import datetime
+import tempfile
 
 # ------------------------------
 # CONFIGURATION
 # ------------------------------
 DATASET_PATH = r"C:\Hackathon 2025\PAR Genie\Datasets\reports-dataset.json"
+POS_DATASET_PATH = r"C:\Hackathon 2025\PAR Genie\Datasets\pos-data.json"
 MODEL_NAME = "all-MiniLM-L6-v2"  # Free, small, local embedding model
-
-from datetime import datetime
-import tempfile
-
 FEEDBACK_FILE = os.path.join(os.path.dirname(DATASET_PATH), "feedback.json")
 
 # ------------------------------
 # INITIALIZATION
 # ------------------------------
-app = FastAPI(title="PAR Genie Report Search Service")
+app = FastAPI(title="PAR Genie Report + POS Assistant Service")
 
 # Load reports dataset
 with open(DATASET_PATH, "r", encoding="utf-8") as f:
@@ -70,29 +70,20 @@ class FeedbackRequest(BaseModel):
     matches: list[str]  # list of reportIds returned in that search
     feedback: str       # "positive" or "negative"
 
+class AssistantQuery(BaseModel):
+    query: str
+
 # ------------------------------
 # FILTER EXTRACTION
 # ------------------------------
 def extract_filters(query_text: str):
-    """Extract dates and locations from the query."""
     filters = {"dates": [], "locations": []}
-
-    # Detect dates like "last week", "September 2025"
-    date_matches = dateparser.search.search_dates(
-        query_text,
-        settings={'PREFER_DATES_FROM': 'past'}
-    )
-
+    date_matches = dateparser.search.search_dates(query_text, settings={'PREFER_DATES_FROM': 'past'})
     if date_matches:
         for raw, dt in date_matches:
-            # Ignore very short tokens like "me" or "to"
             if len(raw.strip()) > 3:
-                filters["dates"].append({
-                    "raw": raw,
-                    "parsed": dt.isoformat()
-                })
+                filters["dates"].append({"raw": raw, "parsed": dt.isoformat()})
 
-    # Detect location keywords manually (extend as needed)
     location_keywords = ["Reg1", "Reg2", "Hilary", "All Locations"]
     for keyword in location_keywords:
         if keyword.lower() in query_text.lower():
@@ -104,7 +95,6 @@ def extract_filters(query_text: str):
 # FEEDBACK STORAGE
 # ------------------------------
 def _atomic_write_json(path, data):
-    """Safely write JSON to file (avoids corruption if multiple writes happen)."""
     dirn = os.path.dirname(path)
     with tempfile.NamedTemporaryFile("w", dir=dirn, delete=False, encoding="utf-8") as tf:
         json.dump(data, tf, indent=2)
@@ -126,10 +116,8 @@ def save_feedback_record(record: dict):
     _atomic_write_json(FEEDBACK_FILE, data)
 
 def compute_feedback_scores():
-    """Return a dict of reportId -> feedback score (-1 to +1)."""
     feedback_data = load_feedback()
     scores = {}
-
     for record in feedback_data:
         for rid in record.get("matches", []):
             if rid not in scores:
@@ -146,8 +134,70 @@ def compute_feedback_scores():
             feedback_scores[rid] = (counts["positive"] - counts["negative"]) / total
         else:
             feedback_scores[rid] = 0
-
     return feedback_scores
+
+# ------------------------------
+# POS DATA HELPERS
+# ------------------------------
+def load_pos_data():
+    if not os.path.exists(POS_DATASET_PATH):
+        return {"groups": []}
+    with open(POS_DATASET_PATH, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+def save_pos_data(data):
+    with open(POS_DATASET_PATH, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=2)
+
+def find_item(data, group_name, location_name, item_name):
+    for group in data.get("groups", []):
+        if group["groupName"].lower() == group_name.lower():
+            for loc in group.get("locations", []):
+                if loc["locationName"].lower() == location_name.lower():
+                    for item in loc.get("items", []):
+                        if item["name"].lower() == item_name.lower():
+                            return item
+    return None
+
+# ------------------------------
+# INTENT DETECTION
+# ------------------------------
+def detect_intent(query: str):
+    q = query.lower()
+    if any(word in q for word in ["update", "change", "set", "modify"]):
+        return "pos_update"
+    elif any(word in q for word in ["price", "discount", "cost", "show item", "get item"]):
+        return "pos_read"
+    elif any(word in q for word in ["report", "sales", "summary", "tax", "timecard", "customers"]):
+        return "report_search"
+    else:
+        return "report_search"
+
+def extract_entities(query: str):
+    q = query.lower()
+    data = load_pos_data()
+    entities = {"group": None, "location": None, "item": None, "value": None}
+
+    for g in data["groups"]:
+        if g["groupName"].lower() in q:
+            entities["group"] = g["groupName"]
+
+    for g in data["groups"]:
+        for loc in g["locations"]:
+            if loc["locationName"].lower() in q:
+                entities["location"] = loc["locationName"]
+
+    for g in data["groups"]:
+        for loc in g["locations"]:
+            for item in loc["items"]:
+                if item["name"].lower() in q:
+                    entities["item"] = item["name"]
+
+    match = re.search(r"\b(\d+(\.\d{1,2})?)\b", q)
+    if match:
+        entities["value"] = float(match.group(1))
+
+    return entities
 
 # ------------------------------
 # SEARCH ENDPOINT
@@ -156,30 +206,22 @@ def compute_feedback_scores():
 def search_reports(req: QueryRequest):
     query_lower = req.query.lower()
 
-    # -----------------------------------------
-    # STEP 1: Keyword Boosting (fuzzy match)
-    # -----------------------------------------
     keyword_boost = {}
     for report in REPORTS:
         for col in report.get("columns", []):
-            # Fuzzy match column name to query
             score = fuzz.token_set_ratio(col.lower(), query_lower)
-            if score > 75:  # Strong match
+            if score > 75:
                 keyword_boost[report["reportId"]] = {
                     "reportId": report["reportId"],
                     "name": report["name"],
                     "category": report["category"],
                     "description": report["description"],
-                    "score": 1.0,  # Force top rank
+                    "score": 1.0,
                     "filters": report["filters"],
                     "columns": report["columns"]
                 }
-                print(f"BOOST MATCH: '{col}' matched query '{req.query}' with score {score}")
-                break  # Only boost once per report
+                break
 
-    # -----------------------------------------
-    # STEP 2: Embedding Search
-    # -----------------------------------------
     query_vector = model.encode([req.query], convert_to_numpy=True)
     faiss.normalize_L2(query_vector)
 
@@ -198,41 +240,24 @@ def search_reports(req: QueryRequest):
             "columns": report_data["columns"]
         }
 
-    # -----------------------------------------
-    # STEP 3: Merge Results
-    # -----------------------------------------
     final_results = {}
-    # Add boosted reports first (guaranteed top)
     for rid, report in keyword_boost.items():
         final_results[rid] = report
-    # Add embedding results, but don't override boosted ones
     for rid, report in embedding_results.items():
         if rid not in final_results:
             final_results[rid] = report
 
-    # Apply feedback scores
     feedback_scores = compute_feedback_scores()
-    weight = 0.01  # adjust sensitivity
-
+    weight = 0.01
     for rid, report in final_results.items():
         fb_score = feedback_scores.get(rid, 0)
         report["score"] = report["score"] + (weight * fb_score)
-        # Cap score
         report["score"] = max(0.0, min(report["score"], 1.0))
 
-    # Sort by score (keyword boost always = 1.0, so these appear first)
     sorted_results = sorted(final_results.values(), key=lambda x: x["score"], reverse=True)
-
-    # -----------------------------------------
-    # STEP 4: Extract Filters
-    # -----------------------------------------
     filters = extract_filters(req.query)
 
-    return {
-        "query": req.query,
-        "matches": sorted_results,
-        "suggestedFilters": filters
-    }
+    return {"query": req.query, "matches": sorted_results, "suggestedFilters": filters}
 
 # ------------------------------
 # FEEDBACK ENDPOINT
@@ -252,8 +277,47 @@ def receive_feedback(req: FeedbackRequest):
         return {"status": "error", "message": str(e)}
 
 # ------------------------------
+# ASSISTANT ENDPOINT (AGENTIC)
+# ------------------------------
+@app.post("/assistant")
+def assistant(req: AssistantQuery):
+    intent = detect_intent(req.query)
+    entities = extract_entities(req.query)
+
+    if intent == "report_search":
+        return search_reports(QueryRequest(query=req.query, top_k=3))
+
+    data = load_pos_data()
+
+    if intent == "pos_read":
+        if not (entities["group"] and entities["location"] and entities["item"]):
+            return {"status": "error", "message": "Could not identify group, location, or item."}
+        item = find_item(data, entities["group"], entities["location"], entities["item"])
+        if not item:
+            return {"status": "error", "message": "Item not found"}
+        return {"status": "success", "action": "read", "item": item}
+
+    if intent == "pos_update":
+        if not (entities["group"] and entities["location"] and entities["item"] and entities["value"]):
+            return {"status": "error", "message": "Missing entity for update (group, location, item, or value)."}
+        item = find_item(data, entities["group"], entities["location"], entities["item"])
+        if not item:
+            return {"status": "error", "message": "Item not found"}
+        old_price = item["price"]
+        item["price"] = entities["value"]
+        save_pos_data(data)
+        return {
+            "status": "success",
+            "action": "update",
+            "message": f"Updated {entities['item']} in {entities['group']} {entities['location']} from {old_price} to {entities['value']}",
+            "item": item
+        }
+
+    return {"status": "error", "message": "Unknown intent"}
+
+# ------------------------------
 # ROOT ENDPOINT
 # ------------------------------
 @app.get("/")
 def root():
-    return {"message": "PAR Genie Report Search Service is running"}
+    return {"message": "PAR Genie Report + POS Assistant Service is running"}
