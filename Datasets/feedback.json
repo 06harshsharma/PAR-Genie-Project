@@ -1,0 +1,12 @@
+[
+  {
+    "query": "Show me reports with tips",
+    "matches": [
+      "RPT001",
+      "RPT003",
+      "RPT004"
+    ],
+    "feedback": "positive",
+    "timestamp": "2025-10-03T19:43:27.564486"
+  }
+]

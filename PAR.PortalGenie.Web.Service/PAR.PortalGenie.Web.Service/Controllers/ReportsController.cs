@@ -69,4 +69,31 @@ public class ReportsController : ControllerBase
             return StatusCode(500, new { error = "Internal Server Error", details = ex.Message });
         }
     }
+
+    // POST: api/reports/feedback
+    [HttpPost("feedback")]
+    public async Task<IActionResult> SubmitFeedback([FromBody] FeedbackRequest request)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("AIService");
+
+            // Forward the full payload to Python service
+            var response = await client.PostAsJsonAsync("/feedback", request);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var error = await response.Content.ReadAsStringAsync();
+                return StatusCode((int)response.StatusCode, new { error = "Failed to record feedback", details = error });
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<object>();
+            return Ok(new { message = "Feedback forwarded", result });
+        }
+        catch (Exception ex)
+        {
+            return StatusCode(500, new { error = "Internal Server Error", details = ex.Message });
+        }
+    }
+
 }

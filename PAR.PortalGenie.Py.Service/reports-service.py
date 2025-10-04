@@ -14,6 +14,11 @@ from rapidfuzz import fuzz
 DATASET_PATH = r"C:\Hackathon 2025\PAR Genie\Datasets\reports-dataset.json"
 MODEL_NAME = "all-MiniLM-L6-v2"  # Free, small, local embedding model
 
+from datetime import datetime
+import tempfile
+
+FEEDBACK_FILE = os.path.join(os.path.dirname(DATASET_PATH), "feedback.json")
+
 # ------------------------------
 # INITIALIZATION
 # ------------------------------
@@ -60,6 +65,11 @@ class QueryRequest(BaseModel):
     query: str
     top_k: int = 3
 
+class FeedbackRequest(BaseModel):
+    query: str
+    matches: list[str]  # list of reportIds returned in that search
+    feedback: str       # "positive" or "negative"
+
 # ------------------------------
 # FILTER EXTRACTION
 # ------------------------------
@@ -89,6 +99,55 @@ def extract_filters(query_text: str):
             filters["locations"].append(keyword)
 
     return filters
+
+# ------------------------------
+# FEEDBACK STORAGE
+# ------------------------------
+def _atomic_write_json(path, data):
+    """Safely write JSON to file (avoids corruption if multiple writes happen)."""
+    dirn = os.path.dirname(path)
+    with tempfile.NamedTemporaryFile("w", dir=dirn, delete=False, encoding="utf-8") as tf:
+        json.dump(data, tf, indent=2)
+        tmpname = tf.name
+    os.replace(tmpname, path)
+
+def load_feedback():
+    if not os.path.exists(FEEDBACK_FILE):
+        return []
+    try:
+        with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return []
+
+def save_feedback_record(record: dict):
+    data = load_feedback()
+    data.append(record)
+    _atomic_write_json(FEEDBACK_FILE, data)
+
+def compute_feedback_scores():
+    """Return a dict of reportId -> feedback score (-1 to +1)."""
+    feedback_data = load_feedback()
+    scores = {}
+
+    for record in feedback_data:
+        for rid in record.get("matches", []):
+            if rid not in scores:
+                scores[rid] = {"positive": 0, "negative": 0}
+            if record["feedback"].lower() == "positive":
+                scores[rid]["positive"] += 1
+            elif record["feedback"].lower() == "negative":
+                scores[rid]["negative"] += 1
+
+    feedback_scores = {}
+    for rid, counts in scores.items():
+        total = counts["positive"] + counts["negative"]
+        if total > 0:
+            feedback_scores[rid] = (counts["positive"] - counts["negative"]) / total
+        else:
+            feedback_scores[rid] = 0
+
+    return feedback_scores
 
 # ------------------------------
 # SEARCH ENDPOINT
@@ -151,6 +210,16 @@ def search_reports(req: QueryRequest):
         if rid not in final_results:
             final_results[rid] = report
 
+    # Apply feedback scores
+    feedback_scores = compute_feedback_scores()
+    weight = 0.01  # adjust sensitivity
+
+    for rid, report in final_results.items():
+        fb_score = feedback_scores.get(rid, 0)
+        report["score"] = report["score"] + (weight * fb_score)
+        # Cap score
+        report["score"] = max(0.0, min(report["score"], 1.0))
+
     # Sort by score (keyword boost always = 1.0, so these appear first)
     sorted_results = sorted(final_results.values(), key=lambda x: x["score"], reverse=True)
 
@@ -164,6 +233,23 @@ def search_reports(req: QueryRequest):
         "matches": sorted_results,
         "suggestedFilters": filters
     }
+
+# ------------------------------
+# FEEDBACK ENDPOINT
+# ------------------------------
+@app.post("/feedback")
+def receive_feedback(req: FeedbackRequest):
+    record = {
+        "query": req.query,
+        "matches": req.matches,
+        "feedback": req.feedback,
+        "timestamp": datetime.utcnow().isoformat()
+    }
+    try:
+        save_feedback_record(record)
+        return {"status": "success", "saved": record}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 # ------------------------------
 # ROOT ENDPOINT
