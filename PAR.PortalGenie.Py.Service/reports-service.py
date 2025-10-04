@@ -1,5 +1,8 @@
 import json
 import os
+import re
+import tempfile
+from datetime import datetime
 from fastapi import FastAPI
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
@@ -7,55 +10,50 @@ import faiss
 import numpy as np
 import dateparser.search
 from rapidfuzz import fuzz
-import re
-from datetime import datetime
-import tempfile
 
 # ------------------------------
 # CONFIGURATION
 # ------------------------------
 DATASET_PATH = r"C:\Hackathon 2025\PAR Genie\Datasets\reports-dataset.json"
-POS_DATASET_PATH = r"C:\Hackathon 2025\PAR Genie\Datasets\pos-data.json"
-MODEL_NAME = "all-MiniLM-L6-v2"  # Free, small, local embedding model
+POS_DATA_PATH = r"C:\Hackathon 2025\PAR Genie\Datasets\pos-data.json"
+MODEL_NAME = "all-MiniLM-L6-v2"
 FEEDBACK_FILE = os.path.join(os.path.dirname(DATASET_PATH), "feedback.json")
 
 # ------------------------------
-# INITIALIZATION
+# FASTAPI INIT
 # ------------------------------
-app = FastAPI(title="PAR Genie Report + POS Assistant Service")
+app = FastAPI(title="PAR Genie Service")
 
-# Load reports dataset
+# ------------------------------
+# LOAD DATASETS
+# ------------------------------
 with open(DATASET_PATH, "r", encoding="utf-8") as f:
     REPORTS = json.load(f)
 
-# Prepare text for embeddings
+with open(POS_DATA_PATH, "r", encoding="utf-8") as f:
+    POS_DATA = json.load(f)
+
+# ------------------------------
+# PREPARE REPORT EMBEDDINGS
+# ------------------------------
 report_texts = [
     (
         r["reportId"],
-        f"{r['name']} - {r['description']} "
-        f"Columns: {' '.join(r.get('columns', []))} "
-        f"Filters: {' '.join([flt['name'] for flt in r.get('filters', [])])} "
-        f"Examples: {' '.join(r.get('examples', []))}"
+        f"{r['name']} - {r['description']} Columns: {' '.join(r.get('columns', []))} Filters: {' '.join([flt['name'] for flt in r.get('filters', [])])}"
     )
     for r in REPORTS
 ]
 
-# Load embedding model
 print("Loading embedding model...")
 model = SentenceTransformer(MODEL_NAME)
 
-# Generate embeddings
-print("Generating embeddings...")
+print("Generating report embeddings...")
 corpus_texts = [t for _, t in report_texts]
 embeddings = model.encode(corpus_texts, convert_to_numpy=True, show_progress_bar=True)
-
-# Normalize for cosine similarity
 faiss.normalize_L2(embeddings)
 dimension = embeddings.shape[1]
 index = faiss.IndexFlatIP(dimension)
 index.add(embeddings)
-
-# Map back to reportId
 id_to_report = [rid for rid, _ in report_texts]
 
 # ------------------------------
@@ -63,36 +61,15 @@ id_to_report = [rid for rid, _ in report_texts]
 # ------------------------------
 class QueryRequest(BaseModel):
     query: str
-    top_k: int = 3
+    limit: int = 3
 
 class FeedbackRequest(BaseModel):
     query: str
-    matches: list[str]  # list of reportIds returned in that search
-    feedback: str       # "positive" or "negative"
-
-class AssistantQuery(BaseModel):
-    query: str
+    matches: list[str]
+    feedback: str  # "positive" or "negative"
 
 # ------------------------------
-# FILTER EXTRACTION
-# ------------------------------
-def extract_filters(query_text: str):
-    filters = {"dates": [], "locations": []}
-    date_matches = dateparser.search.search_dates(query_text, settings={'PREFER_DATES_FROM': 'past'})
-    if date_matches:
-        for raw, dt in date_matches:
-            if len(raw.strip()) > 3:
-                filters["dates"].append({"raw": raw, "parsed": dt.isoformat()})
-
-    location_keywords = ["Reg1", "Reg2", "Hilary", "All Locations"]
-    for keyword in location_keywords:
-        if keyword.lower() in query_text.lower():
-            filters["locations"].append(keyword)
-
-    return filters
-
-# ------------------------------
-# FEEDBACK STORAGE
+# FEEDBACK UTILITIES
 # ------------------------------
 def _atomic_write_json(path, data):
     dirn = os.path.dirname(path)
@@ -107,7 +84,7 @@ def load_feedback():
     try:
         with open(FEEDBACK_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    except Exception:
+    except:
         return []
 
 def save_feedback_record(record: dict):
@@ -126,86 +103,120 @@ def compute_feedback_scores():
                 scores[rid]["positive"] += 1
             elif record["feedback"].lower() == "negative":
                 scores[rid]["negative"] += 1
-
     feedback_scores = {}
     for rid, counts in scores.items():
         total = counts["positive"] + counts["negative"]
-        if total > 0:
-            feedback_scores[rid] = (counts["positive"] - counts["negative"]) / total
-        else:
-            feedback_scores[rid] = 0
+        feedback_scores[rid] = (counts["positive"] - counts["negative"]) / total if total > 0 else 0
     return feedback_scores
 
 # ------------------------------
-# POS DATA HELPERS
+# FILTER EXTRACTION
 # ------------------------------
-def load_pos_data():
-    if not os.path.exists(POS_DATASET_PATH):
-        return {"groups": []}
-    with open(POS_DATASET_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
-
-def save_pos_data(data):
-    with open(POS_DATASET_PATH, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
-
-def find_item(data, group_name, location_name, item_name):
-    for group in data.get("groups", []):
-        if group["groupName"].lower() == group_name.lower():
-            for loc in group.get("locations", []):
-                if loc["locationName"].lower() == location_name.lower():
-                    for item in loc.get("items", []):
-                        if item["name"].lower() == item_name.lower():
-                            return item
-    return None
+def extract_filters(query_text: str):
+    filters = {"dates": [], "locations": []}
+    date_matches = dateparser.search.search_dates(query_text, settings={'PREFER_DATES_FROM': 'past'})
+    if date_matches:
+        for raw, dt in date_matches:
+            if len(raw.strip()) > 3:
+                filters["dates"].append({"raw": raw, "parsed": dt.isoformat()})
+    location_keywords = ["Reg1", "Reg2", "Hilary", "All Locations"]
+    for keyword in location_keywords:
+        if keyword.lower() in query_text.lower():
+            filters["locations"].append(keyword)
+    return filters
 
 # ------------------------------
 # INTENT DETECTION
 # ------------------------------
-def detect_intent(query: str):
-    q = query.lower()
-    if any(word in q for word in ["update", "change", "set", "modify"]):
-        return "pos_update"
-    elif any(word in q for word in ["price", "discount", "cost", "show item", "get item"]):
-        return "pos_read"
-    elif any(word in q for word in ["report", "sales", "summary", "tax", "timecard", "customers"]):
-        return "report_search"
-    else:
-        return "report_search"
+INTENT_EXAMPLES = {
+    "search_report": [
+        "show me the sales report", "get the taxes by location report",
+        "find timecard data", "give me gift card summary",
+        "report on customer signups", "can I see the employee hours report",
+        "fetch report with tips included", "list available reports",
+        "I need a report of new customers", "analytics on order counts",
+        "summary report of promotions", "download the labor cost report"
+    ],
+    "read_data": [
+        "what is the price of a burger", "show me cost of fries",
+        "get current discount on coke", "how much does coffee cost",
+        "list menu prices at Chicago location", "what are today’s discounts",
+        "retrieve details of chicken sandwich", "find price of double cheeseburger",
+        "list all items and prices", "fetch current offers"
+    ],
+    "update_data": [
+        "update price of burger to 5.99", "change fries cost to 2.50",
+        "set coke discount to 10 percent", "reduce price of coffee",
+        "increase burger cost by 1 dollar", "apply 20% discount on fries",
+        "modify the price of chicken sandwich", "update cost of whopper",
+        "adjust discount for double cheeseburger", "set new price for fries"
+    ]
+}
 
-def extract_entities(query: str):
+intent_model = SentenceTransformer(MODEL_NAME)
+intent_embeddings = {}
+for intent, examples in INTENT_EXAMPLES.items():
+    vecs = intent_model.encode(examples, convert_to_numpy=True)
+    faiss.normalize_L2(vecs)
+    mean_vec = np.mean(vecs, axis=0)
+    faiss.normalize_L2(mean_vec.reshape(1, -1))
+    intent_embeddings[intent] = mean_vec
+
+INTENT_KEYWORDS = {
+    "search_report": ["report", "summary", "analytics", "data"],
+    "read_data": ["price", "cost", "show", "how much", "list", "details"],
+    "update_data": ["update", "change", "modify", "set", "increase", "reduce", "adjust"]
+}
+
+def detect_intent(query: str):
+    query_vec = intent_model.encode([query], convert_to_numpy=True)
+    faiss.normalize_L2(query_vec)
+    scores = {intent: float(np.dot(query_vec, mean_vec)) for intent, mean_vec in intent_embeddings.items()}
+
+    # Boost with keyword match
+    q_lower = query.lower()
+    for intent, keywords in INTENT_KEYWORDS.items():
+        for kw in keywords:
+            if kw in q_lower:
+                scores[intent] += 0.1
+                break
+
+    best_intent = max(scores, key=scores.get)
+    best_score = scores[best_intent]
+    if best_score < 0.55:
+        return "unknown", scores
+    return best_intent, scores
+
+# ------------------------------
+# POS ENTITY EXTRACTION
+# ------------------------------
+def extract_pos_entities(query: str):
     q = query.lower()
-    data = load_pos_data()
     entities = {"group": None, "location": None, "item": None, "value": None}
 
-    for g in data["groups"]:
-        if g["groupName"].lower() in q:
-            entities["group"] = g["groupName"]
-
-    for g in data["groups"]:
-        for loc in g["locations"]:
-            if loc["locationName"].lower() in q:
-                entities["location"] = loc["locationName"]
-
-    for g in data["groups"]:
-        for loc in g["locations"]:
-            for item in loc["items"]:
-                if item["name"].lower() in q:
-                    entities["item"] = item["name"]
-
-    match = re.search(r"\b(\d+(\.\d{1,2})?)\b", q)
+    # Extract numeric value
+    match = re.search(r"\b(\d+(\.\d{1,2})?)\b", query)
     if match:
         entities["value"] = float(match.group(1))
+
+    # Match group, location, item
+    for group in POS_DATA.get("groups", []):
+        if group["groupName"].lower() in q:
+            entities["group"] = group["groupName"]
+        for loc in group.get("locations", []):
+            if loc["locationName"].lower() in q:
+                entities["location"] = loc["locationName"]
+            for item in loc.get("items", []):
+                if item["name"].lower() in q:
+                    entities["item"] = item["name"]
 
     return entities
 
 # ------------------------------
-# SEARCH ENDPOINT
+# HANDLERS
 # ------------------------------
-@app.post("/search")
-def search_reports(req: QueryRequest):
-    query_lower = req.query.lower()
-
+def handle_search_reports(query: str, top_k: int):
+    query_lower = query.lower()
     keyword_boost = {}
     for report in REPORTS:
         for col in report.get("columns", []):
@@ -216,16 +227,13 @@ def search_reports(req: QueryRequest):
                     "name": report["name"],
                     "category": report["category"],
                     "description": report["description"],
-                    "score": 1.0,
-                    "filters": report["filters"],
-                    "columns": report["columns"]
+                    "score": 1.0
                 }
                 break
 
-    query_vector = model.encode([req.query], convert_to_numpy=True)
+    query_vector = model.encode([query], convert_to_numpy=True)
     faiss.normalize_L2(query_vector)
-
-    distances, indices = index.search(query_vector, req.top_k)
+    distances, indices = index.search(query_vector, top_k)
     embedding_results = {}
     for score, idx in zip(distances[0], indices[0]):
         report_id = id_to_report[idx]
@@ -235,89 +243,98 @@ def search_reports(req: QueryRequest):
             "name": report_data["name"],
             "category": report_data["category"],
             "description": report_data["description"],
-            "score": float(score),
-            "filters": report_data["filters"],
-            "columns": report_data["columns"]
+            "score": float(score)
         }
 
-    final_results = {}
-    for rid, report in keyword_boost.items():
-        final_results[rid] = report
-    for rid, report in embedding_results.items():
-        if rid not in final_results:
-            final_results[rid] = report
-
+    final_results = {**embedding_results, **keyword_boost}
     feedback_scores = compute_feedback_scores()
     weight = 0.01
     for rid, report in final_results.items():
         fb_score = feedback_scores.get(rid, 0)
-        report["score"] = report["score"] + (weight * fb_score)
-        report["score"] = max(0.0, min(report["score"], 1.0))
+        report["score"] = max(0.0, min(report["score"] + (weight * fb_score), 1.0))
 
     sorted_results = sorted(final_results.values(), key=lambda x: x["score"], reverse=True)
-    filters = extract_filters(req.query)
+    filters = extract_filters(query)
+    return {"intent": "search_report", "query": query, "matches": sorted_results, "suggestedFilters": filters}
 
-    return {"query": req.query, "matches": sorted_results, "suggestedFilters": filters}
+def handle_read_data(query: str):
+    entities = extract_pos_entities(query)
+    if not all([entities["group"], entities["location"], entities["item"]]):
+        return {"status": "error", "message": "Could not identify group/location/item"}
+    for group in POS_DATA["groups"]:
+        if group["groupName"] != entities["group"]:
+            continue
+        for loc in group["locations"]:
+            if loc["locationName"] != entities["location"]:
+                continue
+            for item in loc["items"]:
+                if item["name"] == entities["item"]:
+                    return {
+                        "status": "success",
+                        "action": "read",
+                        "message": None,
+                        "item": {
+                            "id": item.get("id", ""),
+                            "name": item["name"],
+                            "price": item["price"],
+                            "discount": item.get("discount", 0)
+                        }
+                    }
+    return {"status": "error", "message": "Item not found"}
+
+def handle_update_data(query: str):
+    entities = extract_pos_entities(query)
+    if not all([entities["group"], entities["location"], entities["item"], entities["value"]]):
+        return {"status": "error", "message": "Missing entity (group/location/item/value)"}
+
+    updated_item = None
+    for group in POS_DATA["groups"]:
+        if group["groupName"] != entities["group"]:
+            continue
+        for loc in group["locations"]:
+            if loc["locationName"] != entities["location"]:
+                continue
+            for item in loc["items"]:
+                if item["name"] == entities["item"]:
+                    old_price = item["price"]
+                    item["price"] = entities["value"]
+                    updated_item = {
+                        "id": item.get("id", ""),
+                        "name": item["name"],
+                        "price": item["price"],
+                        "discount": item.get("discount", 0)
+                    }
+                    message = f"Updated {item['name']} in {group['groupName']} {loc['locationName']} from {old_price} to {item['price']}"
+                    break
+
+    if updated_item:
+        with open(POS_DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump(POS_DATA, f, indent=2)
+        return {"status": "success", "action": "update", "message": message, "item": updated_item}
+    else:
+        return {"status": "error", "message": "Could not find item to update"}
 
 # ------------------------------
-# FEEDBACK ENDPOINT
-# ------------------------------
-@app.post("/feedback")
-def receive_feedback(req: FeedbackRequest):
-    record = {
-        "query": req.query,
-        "matches": req.matches,
-        "feedback": req.feedback,
-        "timestamp": datetime.utcnow().isoformat()
-    }
-    try:
-        save_feedback_record(record)
-        return {"status": "success", "saved": record}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-# ------------------------------
-# ASSISTANT ENDPOINT (AGENTIC)
+# ENDPOINTS
 # ------------------------------
 @app.post("/assistant")
-def assistant(req: AssistantQuery):
-    intent = detect_intent(req.query)
-    entities = extract_entities(req.query)
+def assistant(req: QueryRequest):
+    intent, scores = detect_intent(req.query)
+    if intent == "search_report":
+        return handle_search_reports(req.query, req.limit)
+    elif intent == "read_data":
+        return handle_read_data(req.query)
+    elif intent == "update_data":
+        return handle_update_data(req.query)
+    else:
+        return {"status": "error", "message": "Could not classify intent"}
 
-    if intent == "report_search":
-        return search_reports(QueryRequest(query=req.query, top_k=3))
+@app.post("/feedback")
+def feedback(req: FeedbackRequest):
+    record = {"query": req.query, "matches": req.matches, "feedback": req.feedback, "timestamp": datetime.utcnow().isoformat()}
+    save_feedback_record(record)
+    return {"status": "success", "saved": record}
 
-    data = load_pos_data()
-
-    if intent == "pos_read":
-        if not (entities["group"] and entities["location"] and entities["item"]):
-            return {"status": "error", "message": "Could not identify group, location, or item."}
-        item = find_item(data, entities["group"], entities["location"], entities["item"])
-        if not item:
-            return {"status": "error", "message": "Item not found"}
-        return {"status": "success", "action": "read", "item": item}
-
-    if intent == "pos_update":
-        if not (entities["group"] and entities["location"] and entities["item"] and entities["value"]):
-            return {"status": "error", "message": "Missing entity for update (group, location, item, or value)."}
-        item = find_item(data, entities["group"], entities["location"], entities["item"])
-        if not item:
-            return {"status": "error", "message": "Item not found"}
-        old_price = item["price"]
-        item["price"] = entities["value"]
-        save_pos_data(data)
-        return {
-            "status": "success",
-            "action": "update",
-            "message": f"Updated {entities['item']} in {entities['group']} {entities['location']} from {old_price} to {entities['value']}",
-            "item": item
-        }
-
-    return {"status": "error", "message": "Unknown intent"}
-
-# ------------------------------
-# ROOT ENDPOINT
-# ------------------------------
 @app.get("/")
 def root():
     return {"message": "PAR Genie Report + POS Assistant Service is running"}
