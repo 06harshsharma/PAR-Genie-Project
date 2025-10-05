@@ -188,6 +188,9 @@ export function ChatDrawer({ open, onClose }: Props) {
             {loading ? 'Searching…' : 'Search'}
           </button>
         </form>
+          <div style={{ fontSize: '12px', color: '#888', textAlign: 'center', padding: '5px 0' }}>
+            PAR Genie is evolving. Responses may not always be accurate.<br />Your feedback helps us get better.
+          </div>
       </div>
 
       {open && <div className="backdrop" onClick={onClose} />}
@@ -285,7 +288,7 @@ const css = `
 }
 .drawer {
   position: fixed; top: 59px; right: 0; width: 420px; height: calc(100vh - 56px);
-  background: #fff; border-left: 1px solid var(--par-outline);
+  background: #fff;
   box-shadow: -10px 0 30px rgba(0,0,0,.08);
   transform: translateX(100%); transition: transform .25s ease;
   display: grid; grid-template-rows: auto 1fr auto; z-index: 50;
@@ -344,7 +347,7 @@ const css = `
 .bubble { padding: 10px 12px; border-radius: 12px; max-width: 80%; }
 
 .drawer-footer {
-  display:flex; gap:8px; padding: 12px; border-top:1px solid var(--par-outline); background:#fff;
+  display:flex; gap:8px; padding: 12px 12px 0; border-top:1px solid var(--par-outline); background:#fff;
 }
 .drawer-footer input {
   flex:1; padding:10px 12px; border-radius: 8px; border: 1px solid var(--par-outline);
