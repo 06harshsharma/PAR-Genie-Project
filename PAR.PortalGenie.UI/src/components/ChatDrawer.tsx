@@ -8,6 +8,9 @@ export function ChatDrawer({ open, onClose }: Props) {
   // Loader state
   const [showLoader, setShowLoader] = useState(false)
   const chatBodyRef = useRef<HTMLDivElement>(null)
+  // Intro animation state
+  const [showIntro, setShowIntro] = useState(false)
+  const [introPhase, setIntroPhase] = useState<'slide-in' | 'show' | 'slide-out' | 'done'>('slide-in')
   // Feedback state
   const [feedbackLoading, setFeedbackLoading] = useState(false)
   async function sendFeedback(type: 'up' | 'down') {
@@ -40,6 +43,39 @@ export function ChatDrawer({ open, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    // Handle intro animation sequence when drawer opens
+    if (open && showIntro) {
+      // Force initial state, then start slide-in animation
+      const timer0 = setTimeout(() => setIntroPhase('slide-in'), 100) // Trigger slide-in
+      const timer1 = setTimeout(() => setIntroPhase('show'), 1100) // Slide in duration (100 + 1000)
+      const timer2 = setTimeout(() => setIntroPhase('slide-out'), 3100) // Show duration (1100 + 2000) - further reduced delay
+      const timer3 = setTimeout(() => {
+        setIntroPhase('done')
+        setShowIntro(false)
+      }, 4100) // Slide out duration (3100 + 1000)
+      
+      return () => {
+        clearTimeout(timer0)
+        clearTimeout(timer1)
+        clearTimeout(timer2)
+        clearTimeout(timer3)
+      }
+    }
+  }, [open, showIntro])
+
+  useEffect(() => {
+    // Reset intro state when drawer opens/closes
+    if (open) {
+      setShowIntro(true)
+      setIntroPhase('slide-in') // Start with slide-in phase but GIF should be hidden initially
+    } else {
+      // Reset state when drawer closes so animation plays again next time
+      setShowIntro(false)
+      setIntroPhase('slide-in')
+    }
+  }, [open])
+
+  useEffect(() => {
     // Scroll chat to bottom when messages change
     if (chatBodyRef.current) {
       chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight
@@ -48,12 +84,12 @@ export function ChatDrawer({ open, onClose }: Props) {
     function onEsc(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
     }
-    if (open) {
+    if (open && !showIntro) {
       setTimeout(() => inputRef.current?.focus(), 200)
       window.addEventListener('keydown', onEsc)
     }
     return () => window.removeEventListener('keydown', onEsc)
-  }, [open, onClose, messages])
+  }, [open, onClose, messages, showIntro])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
@@ -102,62 +138,70 @@ export function ChatDrawer({ open, onClose }: Props) {
         </div>
 
         <div className="drawer-body" ref={chatBodyRef}>
-          {messages.map((m, i) => (
-            <div key={i} className={`msg ${m.role}`}>
-              <div className="bubble">
-                {m.role === 'assistant' && Array.isArray(m.matches) && m.matches.length > 0 ? (
-                  <>
-                    <ul className="match-list">
-                      Sure! Here are some relevant matches:
-                      {m.matches.map((match, idx) => (
-                        <li key={idx} className="match-item">
-                          <div className="match-header">{match.name}</div>
-                          <a href="#" className="match-desc">{match.description}</a>
-                          <div className="match-percent">{Math.round(match.score * 100)}%</div>
-                        </li>
-                      ))}
-                    </ul>
-                    <div className="bubble-feedback">
-                      <button
-                        className="feedback-btn"
-                        aria-label="Thumbs Up"
-                        disabled={feedbackLoading}
-                        onClick={() => sendFeedback('up')}
-                      >
-                        <span role="img" aria-label="Thumbs Up">👍</span>
-                      </button>
-                      <button
-                        className="feedback-btn"
-                        aria-label="Thumbs Down"
-                        disabled={feedbackLoading}
-                        onClick={() => sendFeedback('down')}
-                      >
-                        <span role="img" aria-label="Thumbs Down">👎</span>
-                      </button>
-                    </div>
-                  </>
-                ) : m.role === 'assistant' && m.items ? (
-                  <div className="item-entry">
-                    { m.action == "read" ? "Here are some of the details I found:" : m.message}
-                    <div><strong>{m.items.name}</strong></div>
-                    <div>ID: {m.items.id}</div>
-                    <div>Price: ${m.items.price}</div>
-                    <div>Discount: {m.items.discount}</div>
+          {showIntro ? (
+            <div className={`genie-intro-overlay ${introPhase}`}>
+              <img src="/src/assets/images/par_genie.gif" alt="PAR Genie" className="genie-gif-intro" />
+            </div>
+          ) : (
+            <>
+              {messages.map((m, i) => (
+                <div key={i} className={`msg ${m.role}`}>
+                  <div className="bubble">
+                    {m.role === 'assistant' && Array.isArray(m.matches) && m.matches.length > 0 ? (
+                      <>
+                        <ul className="match-list">
+                          Sure! Here are some relevant matches:
+                          {m.matches.map((match, idx) => (
+                            <li key={idx} className="match-item">
+                              <div className="match-header">{match.name}</div>
+                              <a href="#" className="match-desc">{match.description}</a>
+                              <div className="match-percent">{Math.round(match.score * 100)}%</div>
+                            </li>
+                          ))}
+                        </ul>
+                        <div className="bubble-feedback">
+                          <button
+                            className="feedback-btn"
+                            aria-label="Thumbs Up"
+                            disabled={feedbackLoading}
+                            onClick={() => sendFeedback('up')}
+                          >
+                            <span role="img" aria-label="Thumbs Up">👍</span>
+                          </button>
+                          <button
+                            className="feedback-btn"
+                            aria-label="Thumbs Down"
+                            disabled={feedbackLoading}
+                            onClick={() => sendFeedback('down')}
+                          >
+                            <span role="img" aria-label="Thumbs Down">👎</span>
+                          </button>
+                        </div>
+                      </>
+                    ) : m.role === 'assistant' && m.items ? (
+                      <div className="item-entry">
+                        { m.action == "read" ? "Here are some of the details I found:" : m.message}
+                        <div><strong>{m.items.name}</strong></div>
+                        <div>ID: {m.items.id}</div>
+                        <div>Price: ${m.items.price}</div>
+                        <div>Discount: {m.items.discount}</div>
+                      </div>
+                    ) : (
+                      m.text
+                    )}
                   </div>
-                ) : (
-                  m.text
-                )}
-              </div>
-            </div>
-          ))}
-          {showLoader && (
-            <div className="msg assistant">
-              <div className="bubble">
-                <span className="dot-loader">
-                  <span></span><span></span><span></span>
-                </span>
-              </div>
-            </div>
+                </div>
+              ))}
+              {showLoader && (
+                <div className="msg assistant">
+                  <div className="bubble">
+                    <span className="dot-loader">
+                      <span></span><span></span><span></span>
+                    </span>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -180,21 +224,25 @@ export function ChatDrawer({ open, onClose }: Props) {
             <span role="img" aria-label="Thumbs Down">👎</span>
           </button>
         </div> */}
-        <form className="drawer-footer" onSubmit={handleSubmit}>
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            placeholder="Start typing..."
-            aria-label="Query"
-          />
-          <button type="submit" className="btn submit" disabled={loading}>
-            {loading ? 'Thinking...' : 'Ask Genie'}
-          </button>
-        </form>
-          <div style={{ fontSize: '12px', color: '#888', textAlign: 'center', padding: '5px 0' }}>
-            PAR Genie is evolving. Responses may not always be accurate.<br />Your feedback helps us get better.
-          </div>
+        {!showIntro && (
+          <>
+            <form className="drawer-footer" onSubmit={handleSubmit}>
+              <input
+                ref={inputRef}
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Start typing..."
+                aria-label="Query"
+              />
+              <button type="submit" className="btn submit" disabled={loading}>
+                {loading ? 'Thinking...' : 'Ask Genie'}
+              </button>
+            </form>
+            <div style={{ fontSize: '12px', color: '#888', textAlign: 'center', padding: '5px 0' }}>
+              PAR Genie is evolving. Responses may not always be accurate.<br />Your feedback helps us get better.
+            </div>
+          </>
+        )}
       </div>
 
       {open && <div className="backdrop" onClick={onClose} />}
@@ -342,6 +390,55 @@ const css = `
 
 .drawer-body {
   padding: 12px; overflow:auto; background: #FAFAFA;
+}
+/* Animated intro overlay */
+.genie-intro-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: #FAFAFA;
+  z-index: 10;
+  overflow: hidden;
+}
+.genie-gif-intro {
+  width: 320px;
+  height: auto;
+  border-radius: 24px;
+  box-shadow: 0 16px 40px rgba(0,0,0,0.25);
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, calc(-50% + 350px));
+  opacity: 0;
+  visibility: hidden;
+  transition: all 1s ease-out;
+}
+/* Initial slide-in state - GIF should stay hidden at bottom initially */
+.genie-intro-overlay.slide-in .genie-gif-intro {
+  transform: translate(-50%, calc(-50% + 350px));
+  opacity: 0;
+  visibility: hidden;
+  animation: slideUpToCenter 1s ease-out 0.1s forwards;
+}
+@keyframes slideUpToCenter {
+  to {
+    transform: translate(-50%, -50%);
+    opacity: 1;
+    visibility: visible;
+  }
+}
+.genie-intro-overlay.show .genie-gif-intro {
+  transform: translate(-50%, -50%);
+  opacity: 1;
+  visibility: visible;
+}
+.genie-intro-overlay.slide-out .genie-gif-intro {
+  transform: translate(-50%, calc(-50% - 350px));
+  opacity: 0;
+  visibility: hidden;
+  transition: all 1s ease-in;
 }
 .msg { margin: 15px 0; display:flex; }
 .msg.system .bubble { background: #EEF0FF; color: #2F3452; }
