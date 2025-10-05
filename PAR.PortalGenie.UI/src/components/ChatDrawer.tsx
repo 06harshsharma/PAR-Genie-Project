@@ -31,7 +31,7 @@ export function ChatDrawer({ open, onClose }: Props) {
     role: 'system' | 'user' | 'assistant';
     text: string;
     matches?: any[];
-    items?: any[];
+    items?: any;
   }[]>([
     { role: 'system', text: '👋 Hey there! I\'m PAR Genie. Ask me anything about your Admin Portal.' }
   ])
@@ -76,8 +76,8 @@ export function ChatDrawer({ open, onClose }: Props) {
       setShowLoader(false)
       if (Array.isArray(data.matches) && data.matches.length > 0) {
         setMessages(m => [...m, { role: 'assistant', text: '', matches: data.matches }])
-      } else if (Array.isArray(data.items) && data.items.length > 0) {
-        setMessages(m => [...m, { role: 'assistant', text: '', items: data.items }])
+      } else if (data.item) {
+        setMessages(m => [...m, { role: 'assistant', text: '', items: data.item }])
       } else {
         setMessages(m => [...m, { role: 'assistant', text: 'No matches found.' }])
       }
@@ -133,17 +133,13 @@ export function ChatDrawer({ open, onClose }: Props) {
                       </button>
                     </div>
                   </>
-                ) : m.role === 'assistant' && Array.isArray(m.items) && m.items.length > 0 ? (
-                  <ul className="item-list">
-                    {m.items.map((item: any, idx: number) => (
-                      <li key={idx} className="item-entry">
-                        <div><strong>{item.name}</strong></div>
-                        <div>ID: {item.id}</div>
-                        <div>Price: ${item.price}</div>
-                        <div>Discount: {item.discount}</div>
-                      </li>
-                    ))}
-                  </ul>
+                ) : m.role === 'assistant' && m.items ? (
+                  <div className="item-entry">
+                    <div><strong>{m.items.name}</strong></div>
+                    <div>ID: {m.items.id}</div>
+                    <div>Price: ${m.items.price}</div>
+                    <div>Discount: {m.items.discount}</div>
+                  </div>
                 ) : (
                   m.text
                 )}
