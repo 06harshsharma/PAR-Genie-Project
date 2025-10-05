@@ -111,7 +111,7 @@ ul ul a {
 }
 .btn.genie:hover { transform: translateY(-1px); }
 
-.body { display: grid; grid-template-columns: 240px 1fr; height: calc(100vh - 56px); }
+.body { display: grid; grid-template-columns: 240px 1fr; height: calc(100vh - 60px); }
 
 .side-title { color: var(--par-ink-2); font-weight: bold; margin-bottom: 8px; }
 .side-link { display:block; padding: 8px; border-radius: 8px; color: var(--par-ink-2); }
