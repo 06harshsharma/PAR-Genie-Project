@@ -16,8 +16,9 @@ export function ChatDrawer({ open, onClose }: Props) {
   const [feedbackLoading, setFeedbackLoading] = useState(false)
   const [lastQuery, setLastQuery] = useState('')
   const [lastMatches, setLastMatches] = useState<any[]>([])
+  const [feedbackGiven, setFeedbackGiven] = useState<Set<number>>(new Set())
   
-  async function sendFeedback(type: 'up' | 'down', query: string, matches: any[]) {
+  async function sendFeedback(type: 'up' | 'down', query: string, matches: any[], messageIndex: number) {
     setFeedbackLoading(true)
     try {
       // Extract report IDs from matches array
@@ -32,7 +33,13 @@ export function ChatDrawer({ open, onClose }: Props) {
           feedback: type === 'up' ? 'positive' : 'negative'
         }),
       })
-      // Optionally show a thank you message or toast
+      
+      // Mark this message as having received feedback
+      setFeedbackGiven(prev => new Set([...prev, messageIndex]))
+      
+      // Add thank you message
+      setMessages(m => [...m, { role: 'assistant', text: 'Thanks for the feedback!' }])
+      
     } catch (err) {
       // Optionally handle error
     } finally {
@@ -176,24 +183,26 @@ export function ChatDrawer({ open, onClose }: Props) {
                             </li>
                           ))}
                         </ul>
-                        <div className="bubble-feedback">
-                          <button
-                            className="feedback-btn"
-                            aria-label="Thumbs Up"
-                            disabled={feedbackLoading}
-                            onClick={() => sendFeedback('up', lastQuery, m.matches || [])}
-                          >
-                            <span role="img" aria-label="Thumbs Up">👍</span>
-                          </button>
-                          <button
-                            className="feedback-btn"
-                            aria-label="Thumbs Down"
-                            disabled={feedbackLoading}
-                            onClick={() => sendFeedback('down', lastQuery, m.matches || [])}
-                          >
-                            <span role="img" aria-label="Thumbs Down">👎</span>
-                          </button>
-                        </div>
+                        {!feedbackGiven.has(i) && (
+                          <div className="bubble-feedback">
+                            <button
+                              className="feedback-btn"
+                              aria-label="Thumbs Up"
+                              disabled={feedbackLoading}
+                              onClick={() => sendFeedback('up', lastQuery, m.matches || [], i)}
+                            >
+                              <span role="img" aria-label="Thumbs Up">👍</span>
+                            </button>
+                            <button
+                              className="feedback-btn"
+                              aria-label="Thumbs Down"
+                              disabled={feedbackLoading}
+                              onClick={() => sendFeedback('down', lastQuery, m.matches || [], i)}
+                            >
+                              <span role="img" aria-label="Thumbs Down">👎</span>
+                            </button>
+                          </div>
+                        )}
                       </>
                     ) : m.role === 'assistant' && m.items ? (
                       <div className="item-entry">
@@ -221,26 +230,6 @@ export function ChatDrawer({ open, onClose }: Props) {
             </>
           )}
         </div>
-
-        {/* Feedback icons floating above input */}
-        {/* <div className="feedback-bar">
-          <button
-            className="feedback-btn"
-            aria-label="Thumbs Up"
-            disabled={feedbackLoading}
-            onClick={() => sendFeedback('up')}
-          >
-            <span role="img" aria-label="Thumbs Up">👍</span>
-          </button>
-          <button
-            className="feedback-btn"
-            aria-label="Thumbs Down"
-            disabled={feedbackLoading}
-            onClick={() => sendFeedback('down')}
-          >
-            <span role="img" aria-label="Thumbs Down">👎</span>
-          </button>
-        </div> */}
         {!showIntro && (
           <>
             <form className="drawer-footer" onSubmit={handleSubmit}>
