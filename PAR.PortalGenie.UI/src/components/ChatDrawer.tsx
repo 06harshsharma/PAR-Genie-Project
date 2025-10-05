@@ -76,8 +76,8 @@ export function ChatDrawer({ open, onClose }: Props) {
       setShowLoader(false)
       if (Array.isArray(data.matches) && data.matches.length > 0) {
         setMessages(m => [...m, { role: 'assistant', text: '', matches: data.matches }])
-      } else if (data.reply) {
-        setMessages(m => [...m, { role: 'assistant', text: data.reply }])
+      } else if (Array.isArray(data.items) && data.items.length > 0) {
+        setMessages(m => [...m, { role: 'assistant', text: '', items: data.items }])
       } else {
         setMessages(m => [...m, { role: 'assistant', text: 'No matches found.' }])
       }
@@ -229,10 +229,10 @@ const css = `
 /* Feedback bar styles */
 .bubble-feedback {
   position: absolute;
-  bottom: 8px;
-  right: 12px;
+  bottom: 0px;
+  right: -84px;
   display: flex;
-  gap: 10px;
+  gap: 5px;
   z-index: 2;
 }
 .msg.assistant .bubble {
@@ -244,7 +244,7 @@ const css = `
   border-radius: 50%;
   width: 36px;
   height: 36px;
-  font-size: 22px;
+  font-size: 18px;
   cursor: pointer;
   box-shadow: 0 2px 8px rgba(0,0,0,0.07);
   transition: background 0.2s, transform 0.2s;
@@ -340,7 +340,7 @@ const css = `
 .drawer-body {
   padding: 12px; overflow:auto; background: #FAFAFA;
 }
-.msg { margin: 8px 0; display:flex; }
+.msg { margin: 15px 0; display:flex; }
 .msg.system .bubble { background: #EEF0FF; color: #2F3452; }
 .msg.user { justify-content: flex-end; }
 .msg.user .bubble { background: #E7F7EF; color: #133A2C; }
