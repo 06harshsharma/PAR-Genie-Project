@@ -32,6 +32,8 @@ export function ChatDrawer({ open, onClose }: Props) {
     text: string;
     matches?: any[];
     items?: any;
+    action?: any;
+    message?: any;
   }[]>([
     { role: 'system', text: '👋 Hey there! I\'m PAR Genie. Ask me anything about your Admin Portal.' }
   ])
@@ -77,9 +79,9 @@ export function ChatDrawer({ open, onClose }: Props) {
       if (Array.isArray(data.matches) && data.matches.length > 0) {
         setMessages(m => [...m, { role: 'assistant', text: '', matches: data.matches }])
       } else if (data.item) {
-        setMessages(m => [...m, { role: 'assistant', text: '', items: data.item }])
+        setMessages(m => [...m, { role: 'assistant', text: '', items: data.item, action: data.action, message: data.message }])
       } else {
-        setMessages(m => [...m, { role: 'assistant', text: 'No matches found.' }])
+        setMessages(m => [...m, { role: 'assistant', text: 'Looks like I don’t have that information yet. Want to try a different query?' }])
       }
     } catch (err: any) {
       setShowLoader(false)
@@ -106,6 +108,7 @@ export function ChatDrawer({ open, onClose }: Props) {
                 {m.role === 'assistant' && Array.isArray(m.matches) && m.matches.length > 0 ? (
                   <>
                     <ul className="match-list">
+                      Sure! Here are some relevant matches:
                       {m.matches.map((match, idx) => (
                         <li key={idx} className="match-item">
                           <div className="match-header">{match.name}</div>
@@ -135,6 +138,7 @@ export function ChatDrawer({ open, onClose }: Props) {
                   </>
                 ) : m.role === 'assistant' && m.items ? (
                   <div className="item-entry">
+                    { m.action == "read" ? "Here are some of the details I found:" : m.message}
                     <div><strong>{m.items.name}</strong></div>
                     <div>ID: {m.items.id}</div>
                     <div>Price: ${m.items.price}</div>
@@ -181,11 +185,11 @@ export function ChatDrawer({ open, onClose }: Props) {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Type your query…"
+            placeholder="Start typing..."
             aria-label="Query"
           />
           <button type="submit" className="btn submit" disabled={loading}>
-            {loading ? 'Searching…' : 'Search'}
+            {loading ? 'Thinking...' : 'Ask Genie'}
           </button>
         </form>
           <div style={{ fontSize: '12px', color: '#888', textAlign: 'center', padding: '5px 0' }}>
