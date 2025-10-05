@@ -11,15 +11,26 @@ export function ChatDrawer({ open, onClose }: Props) {
   // Intro animation state
   const [showIntro, setShowIntro] = useState(false)
   const [introPhase, setIntroPhase] = useState<'slide-in' | 'show' | 'slide-out' | 'done'>('slide-in')
+  const [hasPlayedIntro, setHasPlayedIntro] = useState(false)
   // Feedback state
   const [feedbackLoading, setFeedbackLoading] = useState(false)
-  async function sendFeedback(type: 'up' | 'down') {
+  const [lastQuery, setLastQuery] = useState('')
+  const [lastMatches, setLastMatches] = useState<any[]>([])
+  
+  async function sendFeedback(type: 'up' | 'down', query: string, matches: any[]) {
     setFeedbackLoading(true)
     try {
-      await fetch('/your-feedback-api-endpoint', {
+      // Extract report IDs from matches array
+      const reportIds = matches.map(match => match.id || match.reportId).filter(Boolean)
+      
+      await fetch('http://localhost:5145/api/Assistant/feedback', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ feedback: type }),
+        body: JSON.stringify({ 
+          query: query,
+          matches: reportIds,
+          feedback: type === 'up' ? 'positive' : 'negative'
+        }),
       })
       // Optionally show a thank you message or toast
     } catch (err) {
@@ -43,8 +54,8 @@ export function ChatDrawer({ open, onClose }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
-    // Handle intro animation sequence when drawer opens
-    if (open && showIntro) {
+    // Handle intro animation sequence when drawer opens (only on first time)
+    if (open && showIntro && !hasPlayedIntro) {
       // Force initial state, then start slide-in animation
       const timer0 = setTimeout(() => setIntroPhase('slide-in'), 100) // Trigger slide-in
       const timer1 = setTimeout(() => setIntroPhase('show'), 1100) // Slide in duration (100 + 1000)
@@ -52,6 +63,7 @@ export function ChatDrawer({ open, onClose }: Props) {
       const timer3 = setTimeout(() => {
         setIntroPhase('done')
         setShowIntro(false)
+        setHasPlayedIntro(true) // Mark intro as played
       }, 4100) // Slide out duration (3100 + 1000)
       
       return () => {
@@ -61,19 +73,22 @@ export function ChatDrawer({ open, onClose }: Props) {
         clearTimeout(timer3)
       }
     }
-  }, [open, showIntro])
+  }, [open, showIntro, hasPlayedIntro])
 
   useEffect(() => {
-    // Reset intro state when drawer opens/closes
-    if (open) {
+    // Only show intro animation on first time opening
+    if (open && !hasPlayedIntro) {
       setShowIntro(true)
       setIntroPhase('slide-in') // Start with slide-in phase but GIF should be hidden initially
+    } else if (open && hasPlayedIntro) {
+      // Skip intro animation on subsequent opens
+      setShowIntro(false)
     } else {
-      // Reset state when drawer closes so animation plays again next time
+      // Reset state when drawer closes
       setShowIntro(false)
       setIntroPhase('slide-in')
     }
-  }, [open])
+  }, [open, hasPlayedIntro])
 
   useEffect(() => {
     // Scroll chat to bottom when messages change
@@ -113,6 +128,8 @@ export function ChatDrawer({ open, onClose }: Props) {
       // Assuming the API returns { reply: string }
       setShowLoader(false)
       if (Array.isArray(data.matches) && data.matches.length > 0) {
+        setLastQuery(query)
+        setLastMatches(data.matches)
         setMessages(m => [...m, { role: 'assistant', text: '', matches: data.matches }])
       } else if (data.item) {
         setMessages(m => [...m, { role: 'assistant', text: '', items: data.item, action: data.action, message: data.message }])
@@ -164,7 +181,7 @@ export function ChatDrawer({ open, onClose }: Props) {
                             className="feedback-btn"
                             aria-label="Thumbs Up"
                             disabled={feedbackLoading}
-                            onClick={() => sendFeedback('up')}
+                            onClick={() => sendFeedback('up', lastQuery, m.matches || [])}
                           >
                             <span role="img" aria-label="Thumbs Up">👍</span>
                           </button>
@@ -172,7 +189,7 @@ export function ChatDrawer({ open, onClose }: Props) {
                             className="feedback-btn"
                             aria-label="Thumbs Down"
                             disabled={feedbackLoading}
-                            onClick={() => sendFeedback('down')}
+                            onClick={() => sendFeedback('down', lastQuery, m.matches || [])}
                           >
                             <span role="img" aria-label="Thumbs Down">👎</span>
                           </button>
