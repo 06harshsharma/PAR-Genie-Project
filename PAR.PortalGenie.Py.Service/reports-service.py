@@ -248,7 +248,7 @@ def handle_search_reports(query: str, top_k: int):
 
     final_results = {**embedding_results, **keyword_boost}
     feedback_scores = compute_feedback_scores()
-    weight = 0.01
+    weight = 0.1
     for rid, report in final_results.items():
         fb_score = feedback_scores.get(rid, 0)
         report["score"] = max(0.0, min(report["score"] + (weight * fb_score), 1.0))

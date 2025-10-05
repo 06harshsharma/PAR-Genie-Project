@@ -206,11 +206,17 @@ export function ChatDrawer({ open, onClose }: Props) {
                       </>
                     ) : m.role === 'assistant' && m.items ? (
                       <div className="item-entry">
-                        { m.action == "read" ? "Here are some of the details I found:" : m.message}
-                        <div><strong>{m.items.name}</strong></div>
-                        <div>ID: {m.items.id}</div>
-                        <div>Price: ${m.items.price}</div>
-                        <div>Discount: {m.items.discount}</div>
+                        {m.action === "read" ? (
+                          <>
+                            <div>Here are some of the details I found:</div>
+                            <div><strong>{m.items.name}</strong></div>
+                            <div>ID: {m.items.id}</div>
+                            <div>Price: ${m.items.price}</div>
+                            <div>Discount: {m.items.discount}</div>
+                          </>
+                        ) : (
+                          m.message
+                        )}
                       </div>
                     ) : (
                       m.text
