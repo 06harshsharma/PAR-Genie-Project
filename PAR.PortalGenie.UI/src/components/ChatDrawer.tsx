@@ -1,17 +1,48 @@
+
 import React, { useEffect, useRef, useState } from 'react'
 import { askGenie } from '../services/api'
 
 type Props = { open: boolean; onClose: () => void }
 
 export function ChatDrawer({ open, onClose }: Props) {
+  // Loader state
+  const [showLoader, setShowLoader] = useState(false)
+  const chatBodyRef = useRef<HTMLDivElement>(null)
+  // Feedback state
+  const [feedbackLoading, setFeedbackLoading] = useState(false)
+  async function sendFeedback(type: 'up' | 'down') {
+    setFeedbackLoading(true)
+    try {
+      await fetch('/your-feedback-api-endpoint', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ feedback: type }),
+      })
+      // Optionally show a thank you message or toast
+    } catch (err) {
+      // Optionally handle error
+    } finally {
+      setFeedbackLoading(false)
+    }
+  }
   const [query, setQuery] = useState('')
   const [loading, setLoading] = useState(false)
-  const [messages, setMessages] = useState<{ role: 'system'|'user'|'assistant'; text: string; matches?: any[] }[]>([
-    { role: 'system', text: '👋 Hey there! I\'m PAR Genie. Ask me anything about your Admin Portal data.' }
+  const [messages, setMessages] = useState<{
+    role: 'system' | 'user' | 'assistant';
+    text: string;
+    matches?: any[];
+    items?: any[];
+  }[]>([
+    { role: 'system', text: '👋 Hey there! I\'m PAR Genie. Ask me anything about your Admin Portal.' }
   ])
   const inputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
+    // Scroll chat to bottom when messages change
+    if (chatBodyRef.current) {
+      chatBodyRef.current.scrollTop = chatBodyRef.current.scrollHeight
+    }
+
     function onEsc(e: KeyboardEvent) {
       if (e.key === 'Escape') onClose()
     }
@@ -20,17 +51,19 @@ export function ChatDrawer({ open, onClose }: Props) {
       window.addEventListener('keydown', onEsc)
     }
     return () => window.removeEventListener('keydown', onEsc)
-  }, [open, onClose])
+  }, [open, onClose, messages])
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!query.trim()) return
     setMessages(m => [...m, { role: 'user', text: query }])
     setLoading(true)
-    
+    setShowLoader(true)
+
     try {
-      // Call POST API with input value as body
-      const response = await fetch('http://localhost:5145/api/Reports/search', {
+      // Add artificial delay for loader visibility
+      await new Promise(res => setTimeout(res, 900))
+      const response = await fetch('http://localhost:5145/api/Assistant/assistant', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -40,14 +73,16 @@ export function ChatDrawer({ open, onClose }: Props) {
       if (!response.ok) throw new Error('Network response was not ok')
       const data = await response.json()
       // Assuming the API returns { reply: string }
-        if (Array.isArray(data.matches) && data.matches.length > 0) {
-          setMessages(m => [...m, { role: 'assistant', text: '', matches: data.matches }])
-        } else if (data.reply) {
-          setMessages(m => [...m, { role: 'assistant', text: data.reply }])
-        } else {
-          setMessages(m => [...m, { role: 'assistant', text: 'No matches found.' }])
-        }
+      setShowLoader(false)
+      if (Array.isArray(data.matches) && data.matches.length > 0) {
+        setMessages(m => [...m, { role: 'assistant', text: '', matches: data.matches }])
+      } else if (data.reply) {
+        setMessages(m => [...m, { role: 'assistant', text: data.reply }])
+      } else {
+        setMessages(m => [...m, { role: 'assistant', text: 'No matches found.' }])
+      }
     } catch (err: any) {
+      setShowLoader(false)
       setMessages(m => [...m, { role: 'assistant', text: 'Sorry, I could not reach the service.' }])
     } finally {
       setLoading(false)
@@ -64,17 +99,48 @@ export function ChatDrawer({ open, onClose }: Props) {
           <button className="btn close" onClick={onClose} aria-label="Close">✖</button>
         </div>
 
-        <div className="drawer-body">
+        <div className="drawer-body" ref={chatBodyRef}>
           {messages.map((m, i) => (
             <div key={i} className={`msg ${m.role}`}>
               <div className="bubble">
                 {m.role === 'assistant' && Array.isArray(m.matches) && m.matches.length > 0 ? (
-                  <ul className="match-list">
-                    {m.matches.map((match, idx) => (
-                      <li key={idx} className="match-item">
-                        <div className="match-header">{match.name}</div>
-                        <a href="#" className="match-desc">{match.description}</a>
-                        <div className="match-percent">{Math.round(match.score * 100)}% Match</div>
+                  <>
+                    <ul className="match-list">
+                      {m.matches.map((match, idx) => (
+                        <li key={idx} className="match-item">
+                          <div className="match-header">{match.name}</div>
+                          <a href="#" className="match-desc">{match.description}</a>
+                          <div className="match-percent">{Math.round(match.score * 100)}%</div>
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="bubble-feedback">
+                      <button
+                        className="feedback-btn"
+                        aria-label="Thumbs Up"
+                        disabled={feedbackLoading}
+                        onClick={() => sendFeedback('up')}
+                      >
+                        <span role="img" aria-label="Thumbs Up">👍</span>
+                      </button>
+                      <button
+                        className="feedback-btn"
+                        aria-label="Thumbs Down"
+                        disabled={feedbackLoading}
+                        onClick={() => sendFeedback('down')}
+                      >
+                        <span role="img" aria-label="Thumbs Down">👎</span>
+                      </button>
+                    </div>
+                  </>
+                ) : m.role === 'assistant' && Array.isArray(m.items) && m.items.length > 0 ? (
+                  <ul className="item-list">
+                    {m.items.map((item: any, idx: number) => (
+                      <li key={idx} className="item-entry">
+                        <div><strong>{item.name}</strong></div>
+                        <div>ID: {item.id}</div>
+                        <div>Price: ${item.price}</div>
+                        <div>Discount: {item.discount}</div>
                       </li>
                     ))}
                   </ul>
@@ -84,8 +150,36 @@ export function ChatDrawer({ open, onClose }: Props) {
               </div>
             </div>
           ))}
+          {showLoader && (
+            <div className="msg assistant">
+              <div className="bubble">
+                <span className="dot-loader">
+                  <span></span><span></span><span></span>
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
+        {/* Feedback icons floating above input */}
+        {/* <div className="feedback-bar">
+          <button
+            className="feedback-btn"
+            aria-label="Thumbs Up"
+            disabled={feedbackLoading}
+            onClick={() => sendFeedback('up')}
+          >
+            <span role="img" aria-label="Thumbs Up">👍</span>
+          </button>
+          <button
+            className="feedback-btn"
+            aria-label="Thumbs Down"
+            disabled={feedbackLoading}
+            onClick={() => sendFeedback('down')}
+          >
+            <span role="img" aria-label="Thumbs Down">👎</span>
+          </button>
+        </div> */}
         <form className="drawer-footer" onSubmit={handleSubmit}>
           <input
             ref={inputRef}
@@ -107,6 +201,62 @@ export function ChatDrawer({ open, onClose }: Props) {
 }
 
 const css = `
+/* Three dot loader styles */
+.dot-loader {
+  display: inline-block;
+  width: 40px;
+  text-align: center;
+}
+.dot-loader span {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin: 0 2px;
+  background: #1bbf4c;
+  border-radius: 50%;
+  animation: dot-bounce 1s infinite both;
+}
+.dot-loader span:nth-child(2) {
+  animation-delay: 0.2s;
+}
+.dot-loader span:nth-child(3) {
+  animation-delay: 0.4s;
+}
+@keyframes dot-bounce {
+  0%, 80%, 100% { transform: scale(1); }
+  40% { transform: scale(1.5); }
+}
+/* Feedback bar styles */
+.bubble-feedback {
+  position: absolute;
+  bottom: 8px;
+  right: 12px;
+  display: flex;
+  gap: 10px;
+  z-index: 2;
+}
+.msg.assistant .bubble {
+  position: relative;
+}
+.feedback-btn {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  font-size: 22px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+  transition: background 0.2s, transform 0.2s;
+}
+.feedback-btn:hover:not(:disabled) {
+  background: #e6f7ee;
+  transform: scale(1.15);
+}
+.feedback-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
 /* Match list styles */
 .match-list {
   list-style: none;
